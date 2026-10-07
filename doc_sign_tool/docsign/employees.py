@@ -21,8 +21,13 @@ REQUIRED = ("full_name", "email")
 ALIASES = {
     "name": "full_name", "nome": "full_name", "nome e cognome": "full_name", "nominativo": "full_name",
     "姓名": "full_name", "员工姓名": "full_name", "dipendente": "full_name",
-    "e-mail": "email", "mail": "email", "邮箱": "email", "email aziendale": "email",
+    "e-mail": "email", "mail": "email", "邮箱": "email", "email aziendale": "email", "电子邮箱": "email",
+    "邮件": "email", "电子邮件": "email", "工作邮箱": "email", "公司邮箱": "email",
     "id": "employee_id", "matricola": "employee_id", "工号": "employee_id", "员工编号": "employee_id",
+    "员工id": "employee_id", "员工 id": "employee_id", "编号": "employee_id", "record id": "employee_id",
+    "提交时间": "submitted_at", "提交人": "submitter", "手机": "phone", "手机号": "phone", "电话": "phone",
+    "出生日期": "birth_date", "data di nascita": "birth_date", "住址": "address", "地址": "address", "indirizzo": "address",
+    "合同类型": "contract_type", "tipo contratto": "contract_type", "工作地点": "sede_lavoro", "sede": "sede_lavoro",
     "cf": "codice_fiscale", "codice fiscale": "codice_fiscale", "税号": "codice_fiscale",
     "mansione": "job_title", "ruolo": "job_title", "职位": "job_title", "岗位": "job_title",
     "reparto": "department", "部门": "department",
@@ -77,9 +82,9 @@ def read_roster(filename: str, content: bytes) -> list[dict]:
     return rows
 
 
-def import_rows(store: Store, rows: list[dict]) -> tuple[int, list[str]]:
-    """Upsert roster rows. Returns (imported_count, errors)."""
-    n, errors = 0, []
+def import_rows(store: Store, rows: list[dict]) -> tuple[int, list[str], list[str]]:
+    """Upsert roster rows. Returns (imported_count, errors, imported_employee_ids)."""
+    n, errors, ids = 0, [], []
     for i, r in enumerate(rows, start=2):
         missing = [c for c in REQUIRED if not r.get(c)]
         if missing:
@@ -93,13 +98,57 @@ def import_rows(store: Store, rows: list[dict]) -> tuple[int, list[str]]:
         active = str(r.get("active", "1")).strip().lower() not in ("0", "no", "false", "n", "inactive")
         store.upsert_employee(emp_id, r["full_name"], r["email"], extra, active)
         n += 1
-    return n, errors
+        ids.append(emp_id)
+    return n, errors, ids
 
 
-def import_file(store: Store, path: Path) -> tuple[int, list[str]]:
+def import_file(store: Store, path: Path) -> tuple[int, list[str], list[str]]:
     return import_rows(store, read_roster(path.name, path.read_bytes()))
 
 
 def employee_folder_name(emp: dict) -> str:
     name = re.sub(r"[^\w\- ]+", "_", emp["full_name"], flags=re.UNICODE).strip(" _")
     return f"{name}_{emp['employee_id']}"
+
+
+def export_with_status(store: Store, templates: list, dest: Path, fmt: str = "xlsx") -> Path:
+    """Roster + one status column per template + last generation date. Paste back into Feishu/Excel."""
+    emps = store.list_employees(include_inactive=True)
+    latest = store.latest_by_employee_template()
+    cols: list[str] = ["employee_id", "full_name", "email"]
+    for emp in emps:
+        for k in emp["extra"]:
+            if k not in cols:
+                cols.append(k)
+    cols.append("active")
+    status_cols = [(t.name, f"状态: {t.title}") for t in templates]
+    header = cols + [lbl for _, lbl in status_cols] + ["最近生成", "最近签署"]
+    rows = []
+    for emp in emps:
+        base = [emp["employee_id"], emp["full_name"], emp["email"]] + [emp["extra"].get(k, "") for k in cols[3:-1]] + [1 if emp["active"] else 0]
+        recs = [latest.get((emp["employee_id"], t)) for t, _ in status_cols]
+        statuses = [(r["status"] if r else "") for r in recs]
+        gen = max((r["created_at"] for r in recs if r), default="")
+        signed = max((r["signed_at"] or "" for r in recs if r), default="")
+        rows.append(base + statuses + [gen[:10], signed[:10]])
+    if fmt == "csv":
+        with open(dest, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow(header)
+            w.writerows(rows)
+        return dest
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "名册+状态"
+    ws.append(header)
+    for c in ws[1]:
+        c.font = Font(bold=True)
+        c.fill = PatternFill("solid", fgColor="DDE3EA")
+    for r in rows:
+        ws.append(r)
+    ws.freeze_panes = "D2"
+    ws.auto_filter.ref = ws.dimensions
+    wb.save(dest)
+    return dest

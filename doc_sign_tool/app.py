@@ -193,12 +193,23 @@ def employees_import():
         return redirect(url_for("employees_page"))
     try:
         rows = employees.read_roster(f.filename, f.read())
-        n, errs = employees.import_rows(store, rows)
+        n, errs, ids = employees.import_rows(store, rows)
     except Exception as exc:
         flash(f"导入失败：{exc}")
         return redirect(url_for("employees_page"))
     flash(f"已导入 / 更新 {n} 名员工。" + (f" {len(errs)} 行跳过：" + "; ".join(errs[:5]) if errs else ""))
+    if request.form.get("then") == "batch" and ids:
+        return redirect(url_for("batch", employees=ids))
     return redirect(url_for("employees_page"))
+
+
+@app.post("/employees/export")
+def employees_export():
+    fmt = request.form.get("fmt", "xlsx")
+    templates = [t for t in list_templates(cfg.templates_dir) if not t.description.startswith("ERROR")]
+    dest = cfg.archive_dir / f"roster_status_{__import__('datetime').date.today().isoformat()}.{fmt}"
+    employees.export_with_status(store, templates, dest, fmt)
+    return send_file(dest, as_attachment=True)
 
 
 @app.post("/employees/add")
@@ -232,8 +243,10 @@ def employees_delete(emp_id):
 def batch():
     templates = [t for t in list_templates(cfg.templates_dir) if not t.description.startswith("ERROR")]
     emps = store.list_employees()
-    sel_t = request.form.getlist("templates") if request.method == "POST" else []
-    sel_e = request.form.getlist("employees") if request.method == "POST" else []
+    sel_t = request.form.getlist("templates") if request.method == "POST" else request.args.getlist("templates")
+    sel_e = request.form.getlist("employees") if request.method == "POST" else request.args.getlist("employees")
+    if request.method == "GET" and sel_e:
+        flash(f"已预选刚导入的 {len(sel_e)} 人，选好文件后下一步。")
     step = request.form.get("step", "1")
     if request.method == "POST" and step == "2":
         if not sel_t or not sel_e:
@@ -241,9 +254,13 @@ def batch():
             step = "1"
         else:
             fields = service.batch_level_fields(cfg, store, sel_t)
+            existing = service.existing_status(cfg, store, sel_t, sel_e)
             return render_template("batch.html", templates=templates, employees=emps, sel_t=sel_t, sel_e=sel_e,
                                    step="2", fields=fields, cc=cfg.default_cc,
-                                   gaps=service.roster_gaps(cfg, store, sel_t, sel_e))
+                                   gaps=service.roster_gaps(cfg, store, sel_t, sel_e),
+                                   existing=existing, emp_by_id={x["employee_id"]: x for x in emps},
+                                   spec_by_name={t.name: t for t in templates},
+                                   n_changed=sum(1 for v in existing.values() if v["changed"]))
     if request.method == "POST" and step == "3":
         fields = service.batch_level_fields(cfg, store, sel_t)
         batch_data = {f.name: request.form.get(f.name, "").strip() for f in fields}
@@ -254,16 +271,21 @@ def batch():
                                    step="2", fields=fields, cc=cfg.default_cc, data=batch_data)
         cc = [{"name": "", "email": e.strip(), "role": "cc"} for e in request.form.get("cc", "").replace(";", ",").split(",") if "@" in e]
         send_now = request.form.get("action") == "generate_send"
-        recs, errs = service.generate_for_employees(cfg, store, sel_t, sel_e, batch_data,
-                                                    want_pdf=request.form.get("want_pdf") == "on",
-                                                    send_now=send_now, extra_cc=cc)
+        recs, errs, skipped = service.generate_for_employees(
+            cfg, store, sel_t, sel_e, batch_data, want_pdf=request.form.get("want_pdf") == "on",
+            send_now=send_now, extra_cc=cc, skip_existing=request.form.get("skip_existing") == "on",
+            regenerate_changed=request.form.get("regenerate_changed") == "on")
         for e in errs:
             flash(e)
+        if skipped:
+            flash(f"跳过 {len(skipped)} 份已生成的文件" + ("：" + "；".join(skipped[:6]) + ("…" if len(skipped) > 6 else "")))
         if recs:
-            flash(f"已生成 {len(recs)} 份文件" + ("并发送。" if send_now else "。") +
+            flash(f"新生成 {len(recs)} 份文件" + ("并发送。" if send_now else "。") +
                   ("" if cfg.smtp.configured or not send_now else " SMTP 未配置：每份都保存了 .eml。"))
             return redirect(url_for("history", batch_id=recs[0]["batch_id"]))
-        return redirect(url_for("batch"))
+        if not errs:
+            flash("没有需要新生成的文件。")
+        return redirect(url_for("dashboard"))
     return render_template("batch.html", templates=templates, employees=emps, sel_t=sel_t, sel_e=sel_e, step="1")
 
 

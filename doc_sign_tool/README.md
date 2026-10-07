@@ -16,11 +16,22 @@ python app.py                                               # http://127.0.0.1:5
 
 网页：「员工」页导入真实名册 → 「批量生成」选文件 + 选人 → 填本批次统一字段（公司名、版本号…）→ 「生成并逐人发送」→ 「看板」看每人每份的状态 → 收到签回件点「从邮箱拉取签回件」或在记录页手动上传 → 「导出备案登记表 .xlsx」。
 
+### 飞书表单 → Base → 本工具（推荐流程）
+
+1. 飞书表单收集员工信息，进 Base。Base 右上角「…」→ 导出为 Excel。
+2. 「员工」页上传，点 **「导入并去批量生成」**：刚导入的人自动预选。
+3. 选文件 → 下一步。页面顶部「已生成检查」显示 *N / M 已有文件*，并标出名册数据变更的人。
+   - **跳过已生成**（默认勾选）：同一张表反复导出导入，不会重复生成；只有新进名册的人会生成。
+   - **名册数据变更的重新生成**：某人职位、地址在飞书里改过，勾上就重出这个人的文件，其他人照旧跳过。
+4. 生成后点「导出名册 + 状态列」，得到原列 + `状态: <文件名>` 列 + 最近生成 / 签署日期，粘回 Base 的「已生成」字段即可。
+
+幂等的键是 **(员工ID, 文件)**。所以飞书表里一定要有稳定的员工ID列（工号 / 员工ID / Matricola）；没有的话用邮箱前缀代替，邮箱改了就会被当成新人。
+
 ### 员工名册
 
 CSV（`,` `;` 或 Tab 分隔）或 Excel。**每一列都成为模板变量**：列 `codice_fiscale` ↔ 模板 `{{ codice_fiscale }}`。
 必填列 `full_name`、`email`；建议 `employee_id`（工号/matricola，用于更新去重和归档文件夹名）。
-常见中文/意大利语表头自动映射：姓名/Nome e cognome → full_name，邮箱/E-mail → email，工号/Matricola → employee_id，Codice fiscale → codice_fiscale，Mansione → job_title，Reparto/部门 → department，Data assunzione/入职日期 → hire_date。其他列原样保留（小写、空格转下划线）。
+常见中文/意大利语表头自动映射：姓名/Nome e cognome → full_name，邮箱/电子邮箱/E-mail → email，工号/员工ID/Matricola → employee_id，Codice fiscale → codice_fiscale，职位/Mansione → job_title，部门/Reparto → department，入职日期/Data assunzione → hire_date，工作地点/Sede → sede_lavoro，提交时间 → submitted_at，手机 → phone。其他列原样保留（小写、空格转下划线）。飞书导出的日期 `2026/10/01` 和 Excel 日期都能被 `| date` 过滤器格式化。
 重复导入按 `employee_id` 更新。`active` 列填 0/no 表示离职（看板和批量不再出现，历史记录保留）。
 
 ### 批量生成的字段来源
@@ -100,6 +111,8 @@ python cli.py employees import roster.xlsx
 python cli.py employees list
 python cli.py batch informativa_privacy_dipendenti consegna_policy --all --set policy_version=2.0 --send
 python cli.py batch consegna_policy --emp IT001 --emp IT004 --send
+python cli.py batch consegna_policy --all --regenerate-changed   # 默认跳过已生成；--force 全部重出
+python cli.py employees export roster_status.xlsx                # 名册 + 状态列，粘回飞书
 python cli.py inbox --days 30                 # IMAP 拉取签回件并归档
 python cli.py archive <record_id> firmato.pdf # 手动归档
 python cli.py matrix                          # 员工 × 文件状态

@@ -61,8 +61,8 @@ def main(argv=None):
     p = sub.add_parser("history", help="list records"); p.add_argument("--status")
     p = sub.add_parser("serve", help="start the web UI"); p.add_argument("--port", type=int, default=5055)
 
-    p = sub.add_parser("employees", help="roster: import <file> | list")
-    p.add_argument("op", choices=["import", "list"]); p.add_argument("file", nargs="?")
+    p = sub.add_parser("employees", help="roster: import <file> | list | export [file.xlsx|csv]")
+    p.add_argument("op", choices=["import", "list", "export"]); p.add_argument("file", nargs="?")
 
     p = sub.add_parser("batch", help="generate one document per employee per template")
     p.add_argument("templates", nargs="+")
@@ -71,6 +71,8 @@ def main(argv=None):
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="batch-level field")
     p.add_argument("--cc", action="append", default=[])
     p.add_argument("--no-pdf", action="store_true"); p.add_argument("--send", action="store_true")
+    p.add_argument("--force", action="store_true", help="regenerate even if a document already exists")
+    p.add_argument("--regenerate-changed", action="store_true", help="regenerate when roster data changed")
 
     p = sub.add_parser("inbox", help="fetch signed replies via IMAP"); p.add_argument("--days", type=int, default=30)
     p = sub.add_parser("archive", help="archive a signed file for a record"); p.add_argument("record_id"); p.add_argument("file")
@@ -119,8 +121,12 @@ def main(argv=None):
         if a.op == "import":
             if not a.file:
                 sys.exit("employees import <file.csv|xlsx>")
-            n, errs = employees.import_file(store, Path(a.file))
+            n, errs, _ = employees.import_file(store, Path(a.file))
             print(f"imported {n}" + (f", {len(errs)} skipped:\n  " + "\n  ".join(errs) if errs else ""))
+        elif a.op == "export":
+            dest = Path(a.file) if a.file else cfg.archive_dir / "roster_status.xlsx"
+            templates = [t for t in list_templates(cfg.templates_dir) if not t.description.startswith("ERROR")]
+            print(employees.export_with_status(store, templates, dest, "csv" if dest.suffix == ".csv" else "xlsx"))
         else:
             for e in store.list_employees(include_inactive=True):
                 print(f"{e['employee_id']:12} {e['full_name']:30} {e['email']:35} {'' if e['active'] else 'INACTIVE'}")
@@ -134,13 +140,16 @@ def main(argv=None):
         if missing:
             sys.exit("batch-level fields required via --set: " + ", ".join(missing))
         cc = [_rcpt(s, "cc") for s in a.cc]
-        recs, errs = service.generate_for_employees(cfg, store, a.templates, ids, data, want_pdf=not a.no_pdf,
-                                                    send_now=a.send, extra_cc=cc)
+        recs, errs, skipped = service.generate_for_employees(
+            cfg, store, a.templates, ids, data, want_pdf=not a.no_pdf, send_now=a.send, extra_cc=cc,
+            skip_existing=not a.force, regenerate_changed=a.regenerate_changed)
         for r in recs:
             print(f"{r['id']}  {r['status']:9}  {r['employee_name']:28}  {r['title']}")
+        for x in skipped:
+            print("skipped (already generated):", x)
         for e in errs:
             print("ERROR", e, file=sys.stderr)
-        print(f"{len(recs)} generated, {len(errs)} errors")
+        print(f"{len(recs)} generated, {len(skipped)} skipped, {len(errs)} errors")
     elif a.cmd == "inbox":
         s = inbox.fetch_signed(cfg, store, days=a.days)
         print(f"checked {s['checked']}, matched {s['matched']}, archived {len(s['archived'])}")

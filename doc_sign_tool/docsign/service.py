@@ -83,18 +83,54 @@ def generate(cfg: Config, store: Store, template_name: str, data: dict, recipien
                         employee_name=employee["full_name"] if employee else None, batch_id=batch_id)
 
 
+def existing_status(cfg: Config, store: Store, template_names: list[str], employee_ids: list[str]) -> dict:
+    """{(employee_id, template): {"record": rec, "changed": bool}} for pairs that already have a document.
+
+    `changed` = roster values used by that template differ from what the document was generated with,
+    e.g. the employee's job title or address was corrected in Feishu after the first run.
+    """
+    latest = store.latest_by_employee_template()
+    out = {}
+    for tname in template_names:
+        spec = get_template(cfg.templates_dir, tname)
+        names = set(spec.field_names)
+        for emp_id in employee_ids:
+            rec = latest.get((emp_id, tname))
+            if not rec:
+                continue
+            emp = store.get_employee(emp_id)
+            changed = False
+            if emp:
+                for k, v in emp["fields"].items():
+                    if k in names and str(rec["data"].get(k, "")) != str(v):
+                        changed = True
+                        break
+            out[(emp_id, tname)] = {"record": rec, "changed": changed}
+    return out
+
+
 def generate_for_employees(cfg: Config, store: Store, template_names: list[str], employee_ids: list[str],
                            batch_data: dict, want_pdf: bool | None = None, send_now: bool = False,
-                           extra_cc: list[dict] | None = None) -> tuple[list[dict], list[str]]:
-    """One document per (employee, template). Returns (records, errors)."""
+                           extra_cc: list[dict] | None = None, skip_existing: bool = True,
+                           regenerate_changed: bool = False) -> tuple[list[dict], list[str], list[str]]:
+    """One document per (employee, template). Returns (records, errors, skipped).
+
+    skip_existing: pairs that already have a non-cancelled document are not generated again, so the same
+    roster can be re-imported safely. regenerate_changed: still regenerate when roster data changed.
+    """
     batch_id = store.new_id()
-    records, errors = [], []
+    records, errors, skipped = [], [], []
+    existing = existing_status(cfg, store, template_names, employee_ids) if skip_existing else {}
     for emp_id in employee_ids:
         emp = store.get_employee(emp_id)
         if not emp:
             errors.append(f"{emp_id}: not in roster")
             continue
         for tname in template_names:
+            ex = existing.get((emp_id, tname))
+            if ex and not (regenerate_changed and ex["changed"]):
+                skipped.append(f"{emp['full_name']} / {tname} ({ex['record']['status']})")
+                continue
             try:
                 spec = get_template(cfg.templates_dir, tname)
                 # signer = the employee; cc = template defaults + batch extras (deduplicated)
@@ -112,7 +148,7 @@ def generate_for_employees(cfg: Config, store: Store, template_names: list[str],
                 records.append(rec)
             except Exception as exc:
                 errors.append(f"{emp['full_name']} / {tname}: {exc}")
-    return records, errors
+    return records, errors, skipped
 
 
 def batch_level_fields(cfg: Config, store: Store, template_names: list[str]) -> list:

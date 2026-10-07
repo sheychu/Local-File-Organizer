@@ -34,6 +34,23 @@
   <h1>批量生成 · 第 2 步</h1>
   <div class="muted">{{ sel_t|length }} 份文件 × {{ sel_e|length }} 名员工 = {{ sel_t|length * sel_e|length }} 份</div>
 </div>
+{% set total = sel_t|length * sel_e|length %}
+<div class="card">
+  <h2>已生成检查 <span class="muted" style="font-weight:400">{{ existing|length }} / {{ total }} 已有文件{% if n_changed %}，其中 {{ n_changed }} 份名册数据已变更{% endif %}</span></h2>
+  <label style="font-weight:400"><input type="checkbox" name="skip_existing" checked> 跳过已生成的（推荐；同一张表反复导入不会重复生成）</label>
+  <label style="font-weight:400"><input type="checkbox" name="regenerate_changed" {% if n_changed %}checked{% endif %}> 名册数据变更的重新生成（姓名、职位、地址等被改过）</label>
+  {% if existing %}
+  <details style="margin-top:8px"><summary>查看已生成明细</summary>
+  <table style="margin-top:8px">
+    <tr><th>员工</th><th>文件</th><th>状态</th><th>生成时间</th><th>名册变更</th></tr>
+    {% for key, v in existing.items() %}
+    <tr><td>{{ emp_by_id[key[0]].full_name if key[0] in emp_by_id else key[0] }}</td><td>{{ spec_by_name[key[1]].title if key[1] in spec_by_name else key[1] }}</td>
+      <td><a class="pill {{ v.record.status }}" href="{{ url_for('record', rec_id=v.record.id) }}">{{ v.record.status }}</a></td>
+      <td class="muted">{{ v.record.created_at[:16] }}</td><td>{% if v.changed %}<span class="pill missing">已变更</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></details>
+  {% endif %}
+</div>
 {% if gaps %}
 <div class="card" style="border-color:var(--bad)">
   <h2 style="color:var(--bad)">名册缺字段，这些人的文件会生成失败</h2>

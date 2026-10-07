@@ -6,7 +6,16 @@
   <p class="muted">名册的每一列都会成为模板变量：列名 <code>codice_fiscale</code> 对应模板里的 <code>{{ '{{ codice_fiscale }}' }}</code>。必填列：<code>full_name</code>、<code>email</code>；建议有 <code>employee_id</code>（工号 / matricola）。中文、意大利语表头（姓名、邮箱、工号、Nome、Matricola、Codice fiscale…）会自动识别。</p>
   <form method="post" action="{{ url_for('employees_import') }}" enctype="multipart/form-data" class="row">
     <input type="file" name="roster" accept=".csv,.xlsx,.xlsm" required>
-    <button class="btn">导入 CSV / Excel（按工号更新）</button>
+    <button class="btn" name="then" value="batch">导入并去批量生成 →</button>
+    <button class="btn secondary" name="then" value="stay">仅导入</button>
+  </form>
+  <p class="muted" style="margin-bottom:0">飞书多维表格 / 表单结果：右上角「…」→ 导出为 Excel，直接上传。重复导入按工号更新，已生成过的文件默认不重复生成。</p>
+</div>
+<div class="card row">
+  <form method="post" action="{{ url_for('employees_export') }}" class="row">
+    <span>导出名册 + 每份文件的状态列（粘回飞书 Base 的「已生成」字段）：</span>
+    <button class="btn small secondary" name="fmt" value="xlsx">.xlsx</button>
+    <button class="btn small secondary" name="fmt" value="csv">.csv</button>
   </form>
 </div>
 
