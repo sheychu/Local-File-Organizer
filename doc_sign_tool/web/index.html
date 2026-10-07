@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>模板</h1>
+  <p class="muted">把 .docx 模板放进 <code>templates_docx/</code>，占位符写成 <code>{{ '{{ field_name }}' }}</code>。可选的同名 .yaml 用来定义标签、类型、默认收件人和邮件正文。</p>
+</div>
+{% if not templates %}<div class="card">目录里还没有模板。</div>{% endif %}
+{% for t in templates %}
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h2 style="margin-bottom:2px">{{ t.title }}</h2>
+      <div class="muted">{{ t.path.name }} · {{ t.fields|length }} 个字段
+        {% if t.recipients %} · 默认收件人 {{ t.recipients|length }} 人{% endif %}
+        {% if not t.sidecar_path %} · 无 .yaml 配置{% endif %}</div>
+      {% if t.description %}<div style="margin-top:6px">{{ t.description }}</div>{% endif %}
+    </div>
+    {% if not t.description.startswith('ERROR') %}<a class="btn" href="{{ url_for('form', name=t.name) }}">填写 →</a>{% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,8 @@
+config.yaml
+output/*
+!output/.gitkeep
+data/*
+!data/.gitkeep
+__pycache__/
+*.pyc
+templates_docx/~$*

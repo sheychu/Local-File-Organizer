@@ -1,0 +1,19 @@
+# Copy to config.yaml and edit. config.yaml is git-ignored (it holds your mail password).
+# Every smtp value can also come from env vars: DOCSIGN_SMTP_HOST / PORT / USERNAME / PASSWORD / FROM / FROM_NAME
+
+templates_dir: templates_docx
+output_dir: output
+data_dir: data
+convert_to_pdf: true        # needs LibreOffice (soffice) on PATH; set soffice_path if not
+soffice_path: ""            # e.g. C:\Program Files\LibreOffice\program\soffice.exe
+default_cc: []              # always-cc addresses, e.g. [legal@company.it]
+
+smtp:
+  host: smtp.gmail.com      # Gmail: use an App Password; Outlook/M365: smtp.office365.com
+  port: 587
+  use_tls: true             # STARTTLS (port 587)
+  use_ssl: false            # implicit TLS (port 465)
+  username: you@company.it
+  password: ""              # better: export DOCSIGN_SMTP_PASSWORD=...
+  from_email: you@company.it
+  from_name: "Legal Department"

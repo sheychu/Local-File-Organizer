@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }} · DocSign{% endblock %}
+{% block content %}
+<form method="post" action="{{ url_for('generate', name=spec.name) }}">
+<div class="card">
+  <h1>{{ spec.title }}</h1>
+  <div class="muted">{{ spec.path.name }}{% if spec.description %} · {{ spec.description }}{% endif %}</div>
+  {% if spec.undeclared %}
+  <p class="muted">以下占位符在模板里出现但没有 .yaml 定义，按文本处理：{{ spec.undeclared|join(', ') }}。
+    {% if not spec.sidecar_path %}<button class="btn small secondary" formaction="{{ url_for('skeleton', name=spec.name) }}" formnovalidate>生成 .yaml 配置骨架</button>{% endif %}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>1 · 填写字段</h2>
+  <div class="grid">
+  {% for f in spec.fields %}
+    {% set v = data.get(f.name, f.default) %}
+    <div>
+      <label for="{{ f.name }}">{{ f.label }}{% if f.required %} *{% endif %}</label>
+      {% if f.type == 'textarea' %}
+        <textarea id="{{ f.name }}" name="{{ f.name }}" placeholder="{{ f.placeholder }}">{{ v }}</textarea>
+      {% elif f.type == 'select' %}
+        <select id="{{ f.name }}" name="{{ f.name }}">
+          {% if not f.required %}<option value="">—</option>{% endif %}
+          {% for o in f.options %}<option value="{{ o }}" {% if o == v %}selected{% endif %}>{{ o }}</option>{% endfor %}
+        </select>
+      {% elif f.type == 'checkbox' %}
+        <input type="checkbox" id="{{ f.name }}" name="{{ f.name }}" {% if v in ('Yes','on','true','1') %}checked{% endif %}>
+      {% else %}
+        <input type="{{ 'text' if f.type not in ('date','number','email') else f.type }}" id="{{ f.name }}" name="{{ f.name }}" value="{{ v }}" placeholder="{{ f.placeholder }}" {% if f.type == 'number' %}step="any"{% endif %}>
+      {% endif %}
+      {% if f.help %}<div class="muted">{{ f.help }}</div>{% endif %}
+      {% if errors.get(f.name) %}<div class="err">{{ errors[f.name] }}</div>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>2 · 收件人（签字人 / 抄送）</h2>
+  <div id="rcpts">
+  {% for r in recipients %}
+    <div class="rcpt">
+      <input type="text" name="rcpt_name" placeholder="姓名" value="{{ r.name }}">
+      <input type="email" name="rcpt_email" placeholder="email" value="{{ r.email }}">
+      <select name="rcpt_role"><option value="signer" {% if r.role != 'cc' %}selected{% endif %}>签字人</option><option value="cc" {% if r.role == 'cc' %}selected{% endif %}>抄送</option></select>
+      <button type="button" onclick="this.parentNode.remove()" title="删除">✕</button>
+    </div>
+  {% endfor %}
+  </div>
+  <button type="button" class="btn small secondary" onclick="addRcpt()">+ 添加收件人</button>
+</div>
+
+<div class="card">
+  <details>
+    <summary>3 · 邮件主题与正文（可选修改；支持与文档相同的占位符，另有 recipient_name / attachment_name / sender_name）</summary>
+    <label>主题</label><input type="text" name="email_subject" value="{{ spec.email_subject }}">
+    <label>正文</label><textarea name="email_body" style="min-height:160px">{{ spec.email_body }}</textarea>
+  </details>
+</div>
+
+<div class="card row">
+  <label style="margin:0"><input type="checkbox" name="want_pdf" {% if pdf_ok %}checked{% endif %}> 同时转为 PDF（需 LibreOffice）</label>
+  <span style="flex:1"></span>
+  <button class="btn secondary" name="action" value="generate">仅生成文件</button>
+  <button class="btn" name="action" value="generate_send">生成并发送签字</button>
+</div>
+</form>
+<template id="rcpt-tpl"><div class="rcpt">
+  <input type="text" name="rcpt_name" placeholder="姓名">
+  <input type="email" name="rcpt_email" placeholder="email">
+  <select name="rcpt_role"><option value="signer">签字人</option><option value="cc">抄送</option></select>
+  <button type="button" onclick="this.parentNode.remove()" title="删除">✕</button>
+</div></template>
+<script>function addRcpt(){document.getElementById('rcpts').appendChild(document.getElementById('rcpt-tpl').content.cloneNode(true));}</script>
+{% endblock %}

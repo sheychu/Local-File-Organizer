@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ rec.title }} · {{ rec.id }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <div><h1>{{ rec.title }}</h1><div class="muted">{{ rec.id }} · 生成于 {{ rec.created_at }}</div></div>
+    <span class="pill {{ rec.status }}">{{ rec.status }}</span>
+  </div>
+  <div class="row" style="margin-top:12px">
+    {% if rec.docx_path %}<a class="btn small secondary" href="{{ url_for('download', rec_id=rec.id, kind='docx') }}">下载 .docx</a>{% endif %}
+    {% if rec.pdf_path %}<a class="btn small secondary" href="{{ url_for('download', rec_id=rec.id, kind='pdf') }}">下载 .pdf</a>{% endif %}
+    {% if rec.eml_path %}<a class="btn small secondary" href="{{ url_for('download', rec_id=rec.id, kind='eml') }}">下载 .eml（手动发送）</a>{% endif %}
+    {% if rec.signed_path %}<a class="btn small secondary" href="{{ url_for('download', rec_id=rec.id, kind='signed') }}">下载已签署件</a>{% endif %}
+  </div>
+  <div class="muted" style="margin-top:8px">输出目录：<code>{{ out_dir }}</code></div>
+  {% if rec.sent_at %}<div class="muted">发送时间 {{ rec.sent_at }} · Message-ID {{ rec.message_id }}</div>{% endif %}
+  {% if rec.signed_at %}<div class="muted">签署时间 {{ rec.signed_at }}</div>{% endif %}
+  {% if rec.note %}<div class="muted">备注：{{ rec.note }}</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>字段值</h2>
+  <table>{% for k, v in rec.data.items() %}<tr><th style="width:220px">{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
+</div>
+
+{% if rec.status in ('generated', 'sent') %}
+<div class="card">
+  <h2>{{ '重新发送' if rec.status == 'sent' else '发送给签字人' }}</h2>
+  <form method="post" action="{{ url_for('send', rec_id=rec.id) }}">
+    <div id="rcpts">
+    {% for r in rec.recipients %}
+      <div class="rcpt">
+        <input type="text" name="rcpt_name" placeholder="姓名" value="{{ r.name }}">
+        <input type="email" name="rcpt_email" placeholder="email" value="{{ r.email }}">
+        <select name="rcpt_role"><option value="signer" {% if r.role != 'cc' %}selected{% endif %}>签字人</option><option value="cc" {% if r.role == 'cc' %}selected{% endif %}>抄送</option></select>
+        <button type="button" onclick="this.parentNode.remove()" title="删除">✕</button>
+      </div>
+    {% endfor %}
+    </div>
+    <button type="button" class="btn small secondary" onclick="addRcpt()">+ 添加收件人</button>
+    <label>主题</label><input type="text" name="subject" value="{{ rec.subject }}">
+    <label>正文</label><textarea name="body" style="min-height:160px">{{ rec.body }}</textarea>
+    <label>附件</label>
+    <select name="attach" style="max-width:260px">
+      <option value="pdf" {% if not rec.pdf_path %}disabled{% endif %}>PDF{% if not rec.pdf_path %}（未生成）{% endif %}</option>
+      <option value="docx" {% if not rec.pdf_path %}selected{% endif %}>DOCX</option>
+      <option value="both">PDF + DOCX</option>
+    </select>
+    <div style="margin-top:14px"><button class="btn">发送</button></div>
+  </form>
+</div>
+<template id="rcpt-tpl"><div class="rcpt">
+  <input type="text" name="rcpt_name" placeholder="姓名"><input type="email" name="rcpt_email" placeholder="email">
+  <select name="rcpt_role"><option value="signer">签字人</option><option value="cc">抄送</option></select>
+  <button type="button" onclick="this.parentNode.remove()" title="删除">✕</button></div></template>
+<script>function addRcpt(){document.getElementById('rcpts').appendChild(document.getElementById('rcpt-tpl').content.cloneNode(true));}</script>
+{% endif %}
+
+{% if rec.status != 'signed' %}
+<div class="card">
+  <h2>收到签回件后：标记为已签署</h2>
+  <form method="post" action="{{ url_for('signed', rec_id=rec.id) }}" enctype="multipart/form-data" class="row">
+    <input type="file" name="signed_file" accept=".pdf,.docx,.jpg,.png">
+    <input type="text" name="note" placeholder="备注（可选）" style="max-width:300px">
+    <button class="btn">标记已签署</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card row">
+  <form method="post" action="{{ url_for('set_status', rec_id=rec.id) }}" class="row">
+    <select name="status">{% for s in ['generated','sent','signed','cancelled'] %}<option value="{{ s }}" {% if s == rec.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    <button class="btn small secondary">手动改状态</button>
+  </form>
+  <a class="btn small secondary" href="{{ url_for('form', name=rec.template) }}">用同一模板再做一份</a>
+</div>
+{% endblock %}

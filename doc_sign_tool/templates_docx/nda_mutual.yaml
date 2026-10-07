@@ -1,0 +1,40 @@
+title: Mutual NDA (EN/IT)
+description: 双向保密协议示例模板。字段标签/类型/默认收件人都在此文件定义。
+
+fields:
+  - {name: company_name, label: 我方公司名称, default: "J&T Express Italy S.r.l."}
+  - {name: company_address, label: 我方注册地址, default: "Via Example 1, 20100 Milano (MI)"}
+  - {name: company_vat, label: 我方 P.IVA, default: "IT00000000000"}
+  - {name: company_signatory, label: 我方签字人, default: "Kim, General Manager"}
+  - {name: counterparty_name, label: 对方公司名称, placeholder: "Acme S.p.A."}
+  - {name: counterparty_address, label: 对方注册地址}
+  - {name: counterparty_vat, label: 对方 P.IVA}
+  - {name: counterparty_signatory, label: 对方签字人（姓名 + 职务）}
+  - {name: effective_date, label: 生效日期, type: date}
+  - {name: purpose, label: 合作目的, type: textarea, placeholder: "evaluation of a last-mile delivery partnership in Lombardy"}
+  - {name: term_years, label: 协议期限（年）, type: number, default: 2}
+  - {name: survival_years, label: 保密义务存续（年）, type: number, default: 5}
+  - {name: governing_law, label: 适用法律, type: select, options: [Italy, Spain, Switzerland, Czech Republic, Hungary], default: Italy}
+  - {name: jurisdiction, label: 管辖法院, default: Milano}
+  - {name: penalty_amount, label: 违约金（EUR，可留空）, type: number, required: false}
+
+recipients:
+  - {name: "", email: "", role: signer}
+  - {name: "Legal", email: "legal@company.it", role: cc}
+
+email:
+  subject: "Firma richiesta / Signature requested: NDA {{ company_name }} – {{ counterparty_name }}"
+  body: |
+    Gentile {{ recipient_name }},
+
+    in allegato trova l'accordo di riservatezza tra {{ company_name }} e {{ counterparty_name }} ({{ attachment_name }}).
+    La preghiamo di firmarlo e restituircene una copia firmata.
+
+    Dear {{ recipient_name }},
+    please find attached the NDA between {{ company_name }} and {{ counterparty_name }} for signature.
+    Kindly sign and return a countersigned copy.
+
+    Cordiali saluti / Best regards,
+    {{ sender_name }}
+
+output_filename: "NDA_{{ counterparty_name }}_{{ today }}"
