@@ -4,6 +4,7 @@
 templates_dir: templates_docx
 output_dir: output
 data_dir: data
+archive_dir: archive     # signed copies: archive/<employee>/<doc>_<date>_SIGNED.pdf + registro_firme_*.xlsx
 convert_to_pdf: true        # needs LibreOffice (soffice) on PATH; set soffice_path if not
 soffice_path: ""            # e.g. C:\Program Files\LibreOffice\program\soffice.exe
 default_cc: []              # always-cc addresses, e.g. [legal@company.it]
@@ -17,3 +18,13 @@ smtp:
   password: ""              # better: export DOCSIGN_SMTP_PASSWORD=...
   from_email: you@company.it
   from_name: "Legal Department"
+
+# Optional: pull signed replies back automatically. Replies must keep the [DS-...] tag in the subject.
+# Username/password default to the smtp ones. Gmail: imap.gmail.com; M365: outlook.office365.com
+imap:
+  host: imap.gmail.com
+  port: 993
+  use_ssl: true
+  folder: INBOX
+  username: ""
+  password: ""              # or env DOCSIGN_IMAP_PASSWORD

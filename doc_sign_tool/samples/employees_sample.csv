@@ -1,0 +1,4 @@
+employee_id;full_name;email;codice_fiscale;job_title;department;hire_date;sede_lavoro;contract_type
+IT001;Mario Rossi;mario.rossi@example.it;RSSMRA85M01H501Z;Operations Manager;Operations;2024-03-01;Milano;Tempo indeterminato
+IT002;Giulia Bianchi;giulia.bianchi@example.it;BNCGLI90A41F205X;HR Specialist;HR;2025-01-15;Milano;Tempo indeterminato
+IT003;Luca Verdi;luca.verdi@example.it;VRDLCU88C15L219Y;Driver Coordinator;Last Mile;2025-09-01;Bologna;Tempo determinato

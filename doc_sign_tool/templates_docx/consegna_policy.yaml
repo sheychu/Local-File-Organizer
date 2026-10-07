@@ -1,0 +1,31 @@
+title: Ricevuta consegna policy aziendali
+description: 公司政策（Codice etico、Modello 231、IT policy…）签收单。
+
+fields:
+  - {name: company_name, label: 公司名称, default: "J&T Express Italy S.r.l."}
+  - {name: company_signatory, label: 公司签字人, default: "Kim, General Manager"}
+  - {name: documents_list, label: 交付文件清单（每行一份）, type: textarea,
+     default: "- Codice Etico\n- Modello di organizzazione, gestione e controllo ex D.Lgs. 231/2001 – Parte Generale\n- Policy utilizzo strumenti informatici\n- Procedura whistleblowing (D.Lgs. 24/2023)"}
+  - {name: policy_version, label: 版本, default: "2026-01"}
+  - {name: intranet_url, label: 内网链接, default: "https://intranet.company.it/policy"}
+  - {name: ccnl, label: 适用 CCNL, default: "CCNL Logistica, Trasporto Merci e Spedizione"}
+  - {name: full_name, label: 员工姓名}
+  - {name: codice_fiscale, label: Codice fiscale}
+  - {name: job_title, label: 职位}
+  - {name: sede_lavoro, label: 工作地点, default: Milano}
+
+recipients:
+  - {name: HR, email: hr@company.it, role: cc}
+
+email:
+  subject: "Consegna policy aziendali – ricevuta da firmare – {{ full_name }}"
+  body: |
+    Gentile {{ full_name }},
+
+    in allegato la ricevuta di consegna della documentazione aziendale ({{ attachment_name }}).
+    La preghiamo di firmarla e di rispondere a questa e-mail allegando il PDF firmato, mantenendo invariato l'oggetto.
+
+    Cordiali saluti,
+    {{ sender_name }}
+
+output_filename: "Ricevuta_policy_{{ full_name }}_{{ today }}"

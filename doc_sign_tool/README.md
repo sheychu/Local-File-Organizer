@@ -1,17 +1,59 @@
-# DocSign — 本地模板填充 + 发送签字工具
+# DocSign — 员工合规文件：批量生成 → 发送签署 → 签回归档
 
-流程：**选模板 → 自动生成表单 → 填字段 → 生成 .docx / .pdf → 邮件发给签字人 → 本地记录状态（已生成 / 已发送 / 已签署）**
+典型场景：**导入员工名册 → 选员工 × 选合规文件 → 每人一份自动填好 → 逐人邮件发送签字 → 签回的 PDF 自动归档到员工文件夹 → 导出备案登记表 / 看板看谁还没签**。
 
-全部在本机运行，不依赖 DocuSign 等云服务。签字方式是把生成的 PDF 作为邮件附件发给签字人，对方签回后在记录页上传签署件并标记完成。
+全部在本机运行，不依赖 DocuSign 等云服务。签字方式是把 PDF 作为邮件附件发给员工，员工签后回复邮件（附 PDF）；工具通过 IMAP 拉取回信、按主题里的 `[DS-编号]` 匹配记录、归档并标记 `signed`。也可手动上传签回件。
 
-## 1. 安装
+## 0. 五分钟跑通员工流程
 
 ```bash
 cd doc_sign_tool
 pip install -r requirements.txt
-cp config.example.yaml config.yaml     # 填 SMTP；不配也能用，会生成 .eml 文件供手动发送
-python make_sample_template.py         # 生成示例模板 templates_docx/nda_mutual.docx（可选）
-python app.py                          # 打开 http://127.0.0.1:5055
+python make_sample_template.py                              # 示例模板：隐私告知书、政策签收单、NDA
+python cli.py employees import samples/employees_sample.csv # 示例名册 3 人
+python app.py                                               # http://127.0.0.1:5055
+```
+
+网页：「员工」页导入真实名册 → 「批量生成」选文件 + 选人 → 填本批次统一字段（公司名、版本号…）→ 「生成并逐人发送」→ 「看板」看每人每份的状态 → 收到签回件点「从邮箱拉取签回件」或在记录页手动上传 → 「导出备案登记表 .xlsx」。
+
+### 员工名册
+
+CSV（`,` `;` 或 Tab 分隔）或 Excel。**每一列都成为模板变量**：列 `codice_fiscale` ↔ 模板 `{{ codice_fiscale }}`。
+必填列 `full_name`、`email`；建议 `employee_id`（工号/matricola，用于更新去重和归档文件夹名）。
+常见中文/意大利语表头自动映射：姓名/Nome e cognome → full_name，邮箱/E-mail → email，工号/Matricola → employee_id，Codice fiscale → codice_fiscale，Mansione → job_title，Reparto/部门 → department，Data assunzione/入职日期 → hire_date。其他列原样保留（小写、空格转下划线）。
+重复导入按 `employee_id` 更新。`active` 列填 0/no 表示离职（看板和批量不再出现，历史记录保留）。
+
+### 批量生成的字段来源
+
+| 模板占位符 | 取值 |
+|---|---|
+| 名册里有的列（姓名、CF、职位、入职日期…） | 每个员工自己的值 |
+| 名册里没有的（公司名、政策版本、DPO 邮箱…） | 批量页第 2 步填一次，全批次共用；.yaml 里的 `default` 自动带入 |
+| 名册有列但某人为空且字段必填 | 第 2 步红框提示「名册缺字段」，补齐后再生成 |
+
+收件人：签字人 = 员工本人；抄送 = 模板 .yaml 里 `role: cc` 的默认抄送 + 批量页填的抄送 + config 里的 `default_cc`。
+
+### 签回件归档
+
+- 自动：config.yaml 配好 `imap`，看板点「从邮箱拉取签回件」（或 `python cli.py inbox`）。匹配规则：回信主题含 `[DS-编号]` 且带 .pdf/.p7m/.jpg/.png/.docx 附件；发件人是自己的邮件（已发送副本）会跳过。
+- 手动：记录页上传文件 → 同样归档。
+- 归档路径：`archive/<姓名>_<工号>/<文件名>_<日期>_SIGNED.pdf`。
+- 备案登记表：`archive/registro_firme_<日期>.xlsx`，两个 sheet：逐份记录（含归档路径）+ 员工 × 文件矩阵。
+
+### 证据效力提示
+
+员工扫描签字后回邮的 PDF，对 informativa privacy、policy 签收这类只需证明"已交付/已知悉"的文件足够。对需要 forma scritta 的文件（patto di prova art. 2096 c.c.、patto di non concorrenza art. 2125 c.c. 等），建议改用 FEA / firma digitale（.p7m 可直接归档）或收回纸质原件，工具层面不变。
+
+---
+
+## 单份文件模式（非员工场景）
+
+首页「模板」选一个 → 手填所有字段 → 填签字人邮箱 → 生成并发送。适合 NDA、供应商函件等对外文件。
+
+## 1. 安装与配置
+
+```bash
+cp config.example.yaml config.yaml     # 填 SMTP（发信）和 IMAP（收签回件）；都不配也能用：发送时生成 .eml 供手动发送
 ```
 
 docx → PDF 需要本机安装 [LibreOffice](https://www.libreoffice.org/)；找不到时只生成 .docx，不报错。
@@ -51,13 +93,23 @@ output_filename: "NDA_{{ counterparty_name }}_{{ today }}"
 
 **网页**：首页选模板 → 填表 → 填签字人邮箱 → 「生成并发送签字」。记录页可下载文件、重发、改收件人、上传签回件并标记 `signed`。「记录」页按状态筛选，一眼看到哪些还没签回。
 
-**命令行**（适合批量）：
+**命令行**：
 ```bash
+# 员工流程
+python cli.py employees import roster.xlsx
+python cli.py employees list
+python cli.py batch informativa_privacy_dipendenti consegna_policy --all --set policy_version=2.0 --send
+python cli.py batch consegna_policy --emp IT001 --emp IT004 --send
+python cli.py inbox --days 30                 # IMAP 拉取签回件并归档
+python cli.py archive <record_id> firmato.pdf # 手动归档
+python cli.py matrix                          # 员工 × 文件状态
+python cli.py register --fmt xlsx             # 备案登记表
+
+# 单份
 python cli.py list
 python cli.py fields nda_mutual
 python cli.py generate nda_mutual --data fill.json --to "Mario Rossi <mario@acme.it>" --cc legal@company.it --send
 python cli.py send <record_id> --attach both
-python cli.py signed <record_id> --file ~/Downloads/nda_firmato.pdf
 python cli.py history --status sent
 ```
 
@@ -66,8 +118,9 @@ python cli.py history --status sent
 | 内容 | 位置 |
 |---|---|
 | 模板 + 字段配置 | `templates_docx/*.docx` + `*.yaml`（纳入 git） |
-| 生成的文件、.eml、签回件 | `output/<record_id>/`（git 忽略） |
-| 状态记录 | `data/records.db`（SQLite，git 忽略） |
+| 生成的文件、.eml | `output/<record_id>/`（git 忽略） |
+| 签回件归档 + 备案登记表 | `archive/`（git 忽略） |
+| 员工名册 + 状态记录 | `data/records.db`（SQLite，git 忽略） |
 | SMTP 密码 | `config.yaml`（git 忽略）或环境变量 `DOCSIGN_SMTP_PASSWORD` |
 
 ## 5. SMTP 提示
@@ -87,8 +140,12 @@ doc_sign_tool/
 │   ├── render.py          填充 docx、LibreOffice 转 PDF
 │   ├── filters.py         Jinja 过滤器 date / money / lines
 │   ├── mailer.py          SMTP 发送 / .eml 回退
-│   ├── store.py           SQLite 记录
-│   └── service.py         生成、发送、校验（网页和 CLI 共用）
+│   ├── inbox.py           IMAP 拉取签回件，按 [DS-编号] 匹配
+│   ├── archive.py         归档签回件、导出备案登记表
+│   ├── employees.py       名册导入（CSV/XLSX，表头别名）
+│   ├── store.py           SQLite：records + employees
+│   └── service.py         生成、批量、发送、校验（网页和 CLI 共用）
 ├── web/                   HTML 页面
+├── samples/               示例名册
 └── templates_docx/        你的模板
 ```

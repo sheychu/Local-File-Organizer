@@ -24,14 +24,30 @@ class SMTPConfig:
 
 
 @dataclass
+class IMAPConfig:
+    host: str = ""
+    port: int = 993
+    username: str = ""
+    password: str = ""
+    folder: str = "INBOX"
+    use_ssl: bool = True
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host and self.username)
+
+
+@dataclass
 class Config:
     templates_dir: Path = BASE_DIR / "templates_docx"
     output_dir: Path = BASE_DIR / "output"
     data_dir: Path = BASE_DIR / "data"
+    archive_dir: Path = BASE_DIR / "archive"
     convert_to_pdf: bool = True
     soffice_path: str = ""      # leave empty to auto-detect
     default_cc: list = field(default_factory=list)
     smtp: SMTPConfig = field(default_factory=SMTPConfig)
+    imap: IMAPConfig = field(default_factory=IMAPConfig)
 
     @property
     def db_path(self) -> Path:
@@ -57,6 +73,8 @@ def load_config(path: Path | None = None) -> Config:
         cfg.output_dir = (BASE_DIR / raw["output_dir"]).resolve()
     if "data_dir" in raw:
         cfg.data_dir = (BASE_DIR / raw["data_dir"]).resolve()
+    if "archive_dir" in raw:
+        cfg.archive_dir = (BASE_DIR / raw["archive_dir"]).resolve()
     cfg.convert_to_pdf = bool(raw.get("convert_to_pdf", cfg.convert_to_pdf))
     cfg.soffice_path = raw.get("soffice_path", "") or ""
     cfg.default_cc = list(raw.get("default_cc", []) or [])
@@ -73,6 +91,16 @@ def load_config(path: Path | None = None) -> Config:
         use_ssl=bool(s.get("use_ssl", False)),
     )
 
-    for d in (cfg.templates_dir, cfg.output_dir, cfg.data_dir):
+    i = raw.get("imap", {}) or {}
+    cfg.imap = IMAPConfig(
+        host=_env("DOCSIGN_IMAP_HOST", i.get("host", "")) or "",
+        port=int(_env("DOCSIGN_IMAP_PORT", i.get("port", 993)) or 993),
+        username=_env("DOCSIGN_IMAP_USERNAME", i.get("username", cfg.smtp.username)) or "",
+        password=_env("DOCSIGN_IMAP_PASSWORD", i.get("password", cfg.smtp.password)) or "",
+        folder=i.get("folder", "INBOX") or "INBOX",
+        use_ssl=bool(i.get("use_ssl", True)),
+    )
+
+    for d in (cfg.templates_dir, cfg.output_dir, cfg.data_dir, cfg.archive_dir):
         d.mkdir(parents=True, exist_ok=True)
     return cfg

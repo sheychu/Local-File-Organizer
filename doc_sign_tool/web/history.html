@@ -3,19 +3,19 @@
 {% block content %}
 <div class="card">
   <div class="row" style="justify-content:space-between">
-    <h1>记录</h1>
+    <h1>记录{% if employee_id %} · {{ employee_id }}{% endif %}{% if batch_id %} · 批次 {{ batch_id }}{% endif %}</h1>
     <div class="row">
       <a class="btn small {{ 'secondary' if status else '' }}" href="{{ url_for('history') }}">全部</a>
       {% for s in ['generated','sent','signed','cancelled'] %}<a class="btn small {{ '' if status == s else 'secondary' }}" href="{{ url_for('history', status=s) }}">{{ s }}</a>{% endfor %}
     </div>
   </div>
   <table style="margin-top:12px">
-    <tr><th>ID</th><th>模板</th><th>签字人</th><th>状态</th><th>生成</th><th>发送</th><th>签署</th></tr>
+    <tr><th>ID</th><th>文件</th><th>员工 / 签字人</th><th>状态</th><th>生成</th><th>发送</th><th>签署</th></tr>
     {% for r in records %}
     <tr>
       <td><a href="{{ url_for('record', rec_id=r.id) }}">{{ r.id }}</a></td>
       <td>{{ r.title }}</td>
-      <td>{% for p in r.recipients if p.role == 'signer' %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td>{% if r.employee_id %}<a href="{{ url_for('history', employee_id=r.employee_id) }}">{{ r.employee_name }}</a>{% else %}{% for p in r.recipients if p.role == 'signer' %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</td>
       <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
       <td class="muted">{{ r.created_at[:16] }}</td>
       <td class="muted">{{ (r.sent_at or '')[:16] }}</td>

@@ -11,7 +11,7 @@ from flask import (Flask, abort, flash, redirect, render_template, request,
                    send_file, url_for)
 from werkzeug.utils import secure_filename
 
-from docsign import service
+from docsign import archive, employees, inbox, service
 from docsign.config import load_config
 from docsign.store import Store
 from docsign.templates import get_template, list_templates, write_sidecar_skeleton
@@ -26,7 +26,7 @@ app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 @app.context_processor
 def inject_globals():
-    return {"smtp_ok": cfg.smtp.configured, "pdf_ok": cfg.convert_to_pdf}
+    return {"smtp_ok": cfg.smtp.configured, "imap_ok": cfg.imap.configured, "pdf_ok": cfg.convert_to_pdf}
 
 
 def _parse_recipients(form) -> list[dict]:
@@ -140,14 +140,15 @@ def signed(rec_id):
     rec = store.get(rec_id)
     if not rec:
         abort(404)
-    signed_path = None
     f = request.files.get("signed_file")
     if f and f.filename:
         dest = Path(rec["docx_path"]).parent / ("SIGNED_" + secure_filename(f.filename))
         f.save(dest)
-        signed_path = str(dest)
-    store.mark_signed(rec_id, signed_path, request.form.get("note") or None)
-    flash("已标记为已签署。")
+        archived = archive.archive_signed(cfg, store, rec, dest, request.form.get("note") or None)
+        flash(f"已标记为已签署，签署件归档至 {archived}")
+    else:
+        store.mark_signed(rec_id, None, request.form.get("note") or None)
+        flash("已标记为已签署（未上传签署件）。")
     return redirect(url_for("record", rec_id=rec_id))
 
 
@@ -163,7 +164,7 @@ def download(rec_id, kind):
     if not rec:
         abort(404)
     path = {"docx": rec["docx_path"], "pdf": rec["pdf_path"], "eml": rec["eml_path"],
-            "signed": rec["signed_path"]}.get(kind)
+            "signed": rec["archive_path"] or rec["signed_path"]}.get(kind)
     if not path or not Path(path).exists():
         abort(404)
     return send_file(path, as_attachment=True)
@@ -172,7 +173,132 @@ def download(rec_id, kind):
 @app.get("/history")
 def history():
     status = request.args.get("status") or None
-    return render_template("history.html", records=store.list(status), status=status)
+    emp = request.args.get("employee_id") or None
+    batch_id = request.args.get("batch_id") or None
+    return render_template("history.html", records=store.list(status, employee_id=emp, batch_id=batch_id),
+                           status=status, employee_id=emp, batch_id=batch_id)
+
+
+# ---------------- employees ----------------
+@app.get("/employees")
+def employees_page():
+    return render_template("employees.html", employees=store.list_employees(include_inactive=True))
+
+
+@app.post("/employees/import")
+def employees_import():
+    f = request.files.get("roster")
+    if not f or not f.filename:
+        flash("请选择 CSV 或 XLSX 文件。")
+        return redirect(url_for("employees_page"))
+    try:
+        rows = employees.read_roster(f.filename, f.read())
+        n, errs = employees.import_rows(store, rows)
+    except Exception as exc:
+        flash(f"导入失败：{exc}")
+        return redirect(url_for("employees_page"))
+    flash(f"已导入 / 更新 {n} 名员工。" + (f" {len(errs)} 行跳过：" + "; ".join(errs[:5]) if errs else ""))
+    return redirect(url_for("employees_page"))
+
+
+@app.post("/employees/add")
+def employees_add():
+    fm = request.form
+    if not fm.get("full_name") or "@" not in fm.get("email", ""):
+        flash("姓名和有效邮箱必填。")
+        return redirect(url_for("employees_page"))
+    extra = {}
+    for k, v in zip(fm.getlist("extra_key"), fm.getlist("extra_val")):
+        if k.strip():
+            extra[employees.normalise_header(k)] = v.strip()
+    for k in ("codice_fiscale", "job_title", "department", "hire_date"):
+        if fm.get(k):
+            extra[k] = fm[k].strip()
+    emp_id = fm.get("employee_id", "").strip() or fm["email"].split("@")[0].lower()
+    store.upsert_employee(emp_id, fm["full_name"].strip(), fm["email"].strip(), extra, fm.get("active", "1") == "1")
+    flash(f"已保存 {fm['full_name']}。")
+    return redirect(url_for("employees_page"))
+
+
+@app.post("/employees/<emp_id>/delete")
+def employees_delete(emp_id):
+    store.delete_employee(emp_id)
+    flash("已删除。生成过的记录保留。")
+    return redirect(url_for("employees_page"))
+
+
+# ---------------- batch ----------------
+@app.route("/batch", methods=["GET", "POST"])
+def batch():
+    templates = [t for t in list_templates(cfg.templates_dir) if not t.description.startswith("ERROR")]
+    emps = store.list_employees()
+    sel_t = request.form.getlist("templates") if request.method == "POST" else []
+    sel_e = request.form.getlist("employees") if request.method == "POST" else []
+    step = request.form.get("step", "1")
+    if request.method == "POST" and step == "2":
+        if not sel_t or not sel_e:
+            flash("至少选一个模板和一名员工。")
+            step = "1"
+        else:
+            fields = service.batch_level_fields(cfg, store, sel_t)
+            return render_template("batch.html", templates=templates, employees=emps, sel_t=sel_t, sel_e=sel_e,
+                                   step="2", fields=fields, cc=cfg.default_cc,
+                                   gaps=service.roster_gaps(cfg, store, sel_t, sel_e))
+    if request.method == "POST" and step == "3":
+        fields = service.batch_level_fields(cfg, store, sel_t)
+        batch_data = {f.name: request.form.get(f.name, "").strip() for f in fields}
+        missing = [f.label for f in fields if f.required and f.type != "checkbox" and not batch_data.get(f.name)]
+        if missing:
+            flash("必填：" + "、".join(missing))
+            return render_template("batch.html", templates=templates, employees=emps, sel_t=sel_t, sel_e=sel_e,
+                                   step="2", fields=fields, cc=cfg.default_cc, data=batch_data)
+        cc = [{"name": "", "email": e.strip(), "role": "cc"} for e in request.form.get("cc", "").replace(";", ",").split(",") if "@" in e]
+        send_now = request.form.get("action") == "generate_send"
+        recs, errs = service.generate_for_employees(cfg, store, sel_t, sel_e, batch_data,
+                                                    want_pdf=request.form.get("want_pdf") == "on",
+                                                    send_now=send_now, extra_cc=cc)
+        for e in errs:
+            flash(e)
+        if recs:
+            flash(f"已生成 {len(recs)} 份文件" + ("并发送。" if send_now else "。") +
+                  ("" if cfg.smtp.configured or not send_now else " SMTP 未配置：每份都保存了 .eml。"))
+            return redirect(url_for("history", batch_id=recs[0]["batch_id"]))
+        return redirect(url_for("batch"))
+    return render_template("batch.html", templates=templates, employees=emps, sel_t=sel_t, sel_e=sel_e, step="1")
+
+
+# ---------------- dashboard / archive ----------------
+@app.get("/dashboard")
+def dashboard():
+    templates = [t for t in list_templates(cfg.templates_dir) if not t.description.startswith("ERROR")]
+    emps = store.list_employees()
+    latest = store.latest_by_employee_template()
+    counts = {"signed": 0, "sent": 0, "generated": 0, "missing": 0}
+    for e in emps:
+        for t in templates:
+            r = latest.get((e["employee_id"], t.name))
+            counts[r["status"] if r else "missing"] = counts.get(r["status"] if r else "missing", 0) + 1
+    return render_template("dashboard.html", templates=templates, employees=emps, latest=latest, counts=counts,
+                           archive_dir=cfg.archive_dir)
+
+
+@app.post("/inbox/fetch")
+def inbox_fetch():
+    try:
+        s = inbox.fetch_signed(cfg, store, days=int(request.form.get("days", 30)))
+    except Exception as exc:
+        flash(f"拉取失败：{exc}")
+        return redirect(url_for("dashboard"))
+    flash(f"检查 {s['checked']} 封邮件，匹配 {s['matched']} 份签回件，归档 {len(s['archived'])} 个文件。"
+          + (" 跳过：" + "; ".join(s["skipped"][:5]) if s["skipped"] else ""))
+    return redirect(url_for("dashboard"))
+
+
+@app.post("/register/export")
+def register_export():
+    fmt = request.form.get("fmt", "xlsx")
+    path = archive.export_register(cfg, store, fmt)
+    return send_file(path, as_attachment=True)
 
 
 if __name__ == "__main__":

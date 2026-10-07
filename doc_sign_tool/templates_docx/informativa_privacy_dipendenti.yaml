@@ -1,0 +1,39 @@
+title: Informativa privacy dipendenti (GDPR art. 13)
+description: 员工隐私告知书 + 签收声明。员工字段取自名册，公司信息按批次填一次。
+
+fields:
+  - {name: company_name, label: 公司名称, default: "J&T Express Italy S.r.l."}
+  - {name: company_address, label: 公司注册地址, default: "Via Example 1, 20100 Milano (MI)"}
+  - {name: company_vat, label: 公司 P.IVA, default: "IT00000000000"}
+  - {name: company_signatory, label: 公司签字人, default: "Kim, General Manager"}
+  - {name: group_name, label: 集团名称, default: "J&T Express"}
+  - {name: privacy_email, label: 隐私联系邮箱, type: email, default: "privacy@company.it"}
+  - {name: dpo_email, label: DPO 邮箱（无则留空）, type: email, required: false}
+  - {name: policy_version, label: 告知书版本, default: "1.0"}
+  # employee fields below come from the roster; listed here only for labels in the single-document form
+  - {name: full_name, label: 员工姓名}
+  - {name: codice_fiscale, label: Codice fiscale}
+  - {name: job_title, label: 职位}
+  - {name: department, label: 部门}
+  - {name: hire_date, label: 入职日期, type: date}
+  - {name: sede_lavoro, label: 工作地点, default: Milano}
+
+recipients:
+  - {name: HR, email: hr@company.it, role: cc}
+
+email:
+  subject: "Informativa privacy – da firmare / Privacy notice to sign – {{ full_name }}"
+  body: |
+    Gentile {{ full_name }},
+
+    in allegato trova l'informativa sul trattamento dei dati personali ({{ attachment_name }}).
+    La preghiamo di firmare la dichiarazione di ricezione in ultima pagina e di rispondere a questa e-mail
+    allegando il documento firmato in PDF, mantenendo invariato l'oggetto.
+
+    Dear {{ full_name }}, please sign the acknowledgement on the last page and reply to this e-mail
+    with the signed PDF attached, keeping the subject line unchanged.
+
+    Cordiali saluti,
+    {{ sender_name }}
+
+output_filename: "Informativa_privacy_{{ full_name }}_{{ today }}"

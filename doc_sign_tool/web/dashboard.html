@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}看板 · DocSign{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <div><h1>合规签署看板</h1><div class="muted">每格 = 该员工该文件的最新状态。归档目录：<code>{{ archive_dir }}</code></div></div>
+    <div class="row">
+      <span class="pill signed">signed {{ counts.signed }}</span>
+      <span class="pill sent">sent {{ counts.sent }}</span>
+      <span class="pill generated">generated {{ counts.generated }}</span>
+      <span class="pill missing">缺 {{ counts.missing }}</span>
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <form method="post" action="{{ url_for('inbox_fetch') }}" class="row">
+      <button class="btn" {% if not imap_ok %}disabled title="config.yaml 里配置 imap"{% endif %}>从邮箱拉取签回件</button>
+      <span class="muted">最近 <input type="number" name="days" value="30" style="width:70px;display:inline"> 天</span>
+    </form>
+    <form method="post" action="{{ url_for('register_export') }}" class="row">
+      <button class="btn secondary" name="fmt" value="xlsx">导出备案登记表 .xlsx</button>
+      <button class="btn secondary" name="fmt" value="csv">.csv</button>
+    </form>
+    <a class="btn secondary" href="{{ url_for('batch') }}">批量生成缺失文件</a>
+  </div>
+</div>
+<div class="card" style="overflow-x:auto">
+  <table>
+    <tr><th>员工</th>{% for t in templates %}<th>{{ t.title }}</th>{% endfor %}</tr>
+    {% for e in employees %}
+    <tr>
+      <td><a href="{{ url_for('history', employee_id=e.employee_id) }}">{{ e.full_name }}</a><div class="muted">{{ e.extra.department or '' }}</div></td>
+      {% for t in templates %}{% set r = latest.get((e.employee_id, t.name)) %}
+      <td>{% if r %}<a href="{{ url_for('record', rec_id=r.id) }}" class="pill {{ r.status }}">{{ r.status }}</a>
+        <div class="muted">{{ (r.signed_at or r.sent_at or r.created_at)[:10] }}</div>{% else %}<span class="pill missing">—</span>{% endif %}</td>
+      {% endfor %}
+    </tr>
+    {% else %}<tr><td colspan="{{ templates|length + 1 }}" class="muted">名册为空。</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}员工 · DocSign{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>员工名册</h1>
+  <p class="muted">名册的每一列都会成为模板变量：列名 <code>codice_fiscale</code> 对应模板里的 <code>{{ '{{ codice_fiscale }}' }}</code>。必填列：<code>full_name</code>、<code>email</code>；建议有 <code>employee_id</code>（工号 / matricola）。中文、意大利语表头（姓名、邮箱、工号、Nome、Matricola、Codice fiscale…）会自动识别。</p>
+  <form method="post" action="{{ url_for('employees_import') }}" enctype="multipart/form-data" class="row">
+    <input type="file" name="roster" accept=".csv,.xlsx,.xlsm" required>
+    <button class="btn">导入 CSV / Excel（按工号更新）</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>{{ employees|length }} 人</h2>
+  <table>
+    <tr><th>工号</th><th>姓名</th><th>邮箱</th><th>其他字段</th><th></th></tr>
+    {% for e in employees %}
+    <tr {% if not e.active %}style="opacity:.5"{% endif %}>
+      <td>{{ e.employee_id }}</td>
+      <td><a href="{{ url_for('history', employee_id=e.employee_id) }}">{{ e.full_name }}</a>{% if not e.active %} <span class="pill">inactive</span>{% endif %}</td>
+      <td>{{ e.email }}</td>
+      <td class="muted">{% for k, v in e.extra.items() if v %}{{ k }}={{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+      <td><form method="post" action="{{ url_for('employees_delete', emp_id=e.employee_id) }}" onsubmit="return confirm('删除 {{ e.full_name }}？')"><button class="btn small secondary">删除</button></form></td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="muted">还没有员工，先导入名册或手动添加。</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>手动添加 / 修改一人</h2>
+  <form method="post" action="{{ url_for('employees_add') }}">
+    <div class="grid">
+      <div><label>工号 employee_id（留空按邮箱生成）</label><input type="text" name="employee_id"></div>
+      <div><label>姓名 full_name *</label><input type="text" name="full_name" required></div>
+      <div><label>邮箱 email *</label><input type="email" name="email" required></div>
+      <div><label>Codice fiscale</label><input type="text" name="codice_fiscale"></div>
+      <div><label>职位 job_title</label><input type="text" name="job_title"></div>
+      <div><label>部门 department</label><input type="text" name="department"></div>
+      <div><label>入职日期 hire_date</label><input type="date" name="hire_date"></div>
+      <div><label>状态</label><select name="active"><option value="1">在职</option><option value="0">离职</option></select></div>
+    </div>
+    <label>其他自定义字段（列名 → 值）</label>
+    <div class="rcpt" style="grid-template-columns:1fr 2fr"><input type="text" name="extra_key" placeholder="e.g. sede_lavoro"><input type="text" name="extra_val" placeholder="Milano"></div>
+    <div class="rcpt" style="grid-template-columns:1fr 2fr"><input type="text" name="extra_key"><input type="text" name="extra_val"></div>
+    <button class="btn">保存</button>
+  </form>
+</div>
+{% endblock %}

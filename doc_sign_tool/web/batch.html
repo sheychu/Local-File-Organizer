@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}批量生成 · DocSign{% endblock %}
+{% block content %}
+<form method="post" action="{{ url_for('batch') }}">
+{% if step == '1' %}
+<div class="card">
+  <h1>批量生成合规文件</h1>
+  <p class="muted">选员工 × 选文件 → 每人每份单独生成、单独发送。文件里的员工字段（姓名、CF、职位…）自动从名册取。</p>
+</div>
+<div class="card">
+  <h2>1 · 选文件</h2>
+  {% for t in templates %}
+  <label style="font-weight:400"><input type="checkbox" name="templates" value="{{ t.name }}" {% if t.name in sel_t %}checked{% endif %}> <b>{{ t.title }}</b> <span class="muted">{{ t.path.name }}{% if t.description %} · {{ t.description }}{% endif %}</span></label>
+  {% else %}<p class="muted">没有模板。</p>{% endfor %}
+</div>
+<div class="card">
+  <h2>2 · 选员工 <button type="button" class="btn small secondary" onclick="document.querySelectorAll('input[name=employees]').forEach(c=>c.checked=true)">全选</button>
+    <button type="button" class="btn small secondary" onclick="document.querySelectorAll('input[name=employees]').forEach(c=>c.checked=false)">清空</button></h2>
+  <input type="text" placeholder="筛选姓名 / 部门…" oninput="filt(this.value)" style="margin-bottom:8px">
+  <div id="emps">
+  {% for e in employees %}
+  <label style="font-weight:400" data-s="{{ (e.full_name ~ ' ' ~ e.email ~ ' ' ~ (e.extra.department or '') ~ ' ' ~ (e.extra.job_title or ''))|lower }}">
+    <input type="checkbox" name="employees" value="{{ e.employee_id }}" {% if e.employee_id in sel_e %}checked{% endif %}> {{ e.full_name }} <span class="muted">{{ e.email }}{% if e.extra.department %} · {{ e.extra.department }}{% endif %}</span></label>
+  {% else %}<p class="muted">名册为空，先去「员工」页导入。</p>{% endfor %}
+  </div>
+</div>
+<div class="card row"><span style="flex:1"></span><button class="btn" name="step" value="2">下一步 →</button></div>
+<script>function filt(q){q=q.toLowerCase();document.querySelectorAll('#emps label').forEach(l=>l.style.display=l.dataset.s.includes(q)?'':'none');}</script>
+
+{% else %}
+{% for t in sel_t %}<input type="hidden" name="templates" value="{{ t }}">{% endfor %}
+{% for e in sel_e %}<input type="hidden" name="employees" value="{{ e }}">{% endfor %}
+<div class="card">
+  <h1>批量生成 · 第 2 步</h1>
+  <div class="muted">{{ sel_t|length }} 份文件 × {{ sel_e|length }} 名员工 = {{ sel_t|length * sel_e|length }} 份</div>
+</div>
+{% if gaps %}
+<div class="card" style="border-color:var(--bad)">
+  <h2 style="color:var(--bad)">名册缺字段，这些人的文件会生成失败</h2>
+  <ul style="margin:0">{% for name, missing in gaps %}<li><b>{{ name }}</b>：{{ missing|join('、') }}</li>{% endfor %}</ul>
+  <p class="muted">去「员工」页补齐后再回来，或者先取消勾选这些人。</p>
+</div>
+{% endif %}
+<div class="card">
+  <h2>3 · 本批次统一字段</h2>
+  {% if fields %}
+  <p class="muted">这些占位符名册里没有，对本批次所有人填同一个值（如公司名、政策版本、日期）。</p>
+  <div class="grid">
+  {% for f in fields %}{% set v = (data or {}).get(f.name, f.default) %}
+    <div><label>{{ f.label }}{% if f.required %} *{% endif %}</label>
+    {% if f.type == 'textarea' %}<textarea name="{{ f.name }}">{{ v }}</textarea>
+    {% elif f.type == 'select' %}<select name="{{ f.name }}">{% for o in f.options %}<option {% if o == v %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+    {% else %}<input type="{{ 'text' if f.type not in ('date','number','email') else f.type }}" name="{{ f.name }}" value="{{ v }}">{% endif %}
+    {% if f.help %}<div class="muted">{{ f.help }}</div>{% endif %}</div>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted">名册已覆盖全部字段，无需额外填写。</p>{% endif %}
+  <label>抄送（逗号分隔）</label><input type="text" name="cc" value="{{ cc|join(', ') }}">
+</div>
+<div class="card row">
+  <label style="margin:0"><input type="checkbox" name="want_pdf" {% if pdf_ok %}checked{% endif %}> 转 PDF</label>
+  <span style="flex:1"></span>
+  <button class="btn secondary" name="step" value="1" formnovalidate>← 返回</button>
+  <button class="btn secondary" name="step" value="3" onclick="this.form.action.value='generate'">仅生成</button>
+  <button class="btn" name="step" value="3" onclick="this.form.action.value='generate_send'">生成并逐人发送</button>
+  <input type="hidden" name="action" value="generate">
+</div>
+{% endif %}
+</form>
+{% endblock %}

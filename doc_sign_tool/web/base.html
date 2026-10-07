@@ -29,6 +29,7 @@
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
   .pill { display:inline-block; padding:1px 9px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--line); }
+  .pill.missing { color:var(--bad); border-style:dashed; }
   .pill.generated { color:var(--muted); } .pill.sent { color:var(--warn); border-color:var(--warn); } .pill.signed { color:var(--ok); border-color:var(--ok); } .pill.cancelled { color:var(--bad); border-color:var(--bad); }
   .flash { background:#fff8c5; color:#4d3800; border:1px solid #d4a72c; padding:10px 14px; border-radius:8px; margin-bottom:14px; }
   .err { color:var(--bad); font-size:13px; }
@@ -42,9 +43,12 @@
 <body>
 <header><div class="in">
   <a class="brand" href="{{ url_for('index') }}">DocSign</a>
+  <a href="{{ url_for('dashboard') }}">看板</a>
+  <a href="{{ url_for('batch') }}">批量生成</a>
+  <a href="{{ url_for('employees_page') }}">员工</a>
   <a href="{{ url_for('index') }}">模板</a>
   <a href="{{ url_for('history') }}">记录</a>
-  <span class="status">SMTP：{{ '已配置' if smtp_ok else '未配置（保存 .eml）' }} · PDF：{{ '开' if pdf_ok else '关' }}</span>
+  <span class="status">SMTP：{{ '✓' if smtp_ok else '未配置' }} · IMAP：{{ '✓' if imap_ok else '未配置' }} · PDF：{{ '开' if pdf_ok else '关' }}</span>
 </div></header>
 <main>
   {% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
